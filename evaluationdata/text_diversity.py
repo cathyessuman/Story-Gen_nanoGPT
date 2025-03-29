@@ -17,8 +17,8 @@ def load_stories_from_file(file_path):
         return []
 
     with open(file_path, 'r', encoding='utf-8') as f:
-        stories = f.read().strip().split("\n\n")  # Split by double newlines
-        stories = [s.strip() for s in stories if len(s.strip()) > 10]  # Remove very short stories
+        stories = f.read().strip().split("\n\n")  
+        stories = [s.strip() for s in stories if len(s.strip()) > 10]  
 
     if len(stories) == 0:
         print(f"Warning: {file_path} contains no valid stories!")
@@ -37,9 +37,8 @@ def type_token_ratio(tokens):
 
 
 def semantic_similarity_cosine(stories):
-    """ Compute semantic similarity using Sentence Transformers & cosine similarity """
     if len(stories) < 2:
-        return 0.0  # Avoid NaN if only one story
+        return 0.0 
 
     embeddings = st_model.encode(stories)
 
@@ -79,6 +78,5 @@ file_pairs = [
     ('eval_YorubaMini.txt', 'eval_YorubaMini.bin')
 ]
 
-# Run evaluations
 for txt_file, bin_file in file_pairs:
     evaluate_file(txt_file, bin_file)
