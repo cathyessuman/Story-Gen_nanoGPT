@@ -1,84 +1,77 @@
 import os
 import numpy as np
+import torch
 import nltk
-from nltk.tokenize import word_tokenize
+from scipy.spatial.distance import cosine
 from sentence_transformers import SentenceTransformer
-from scipy.spatial import distance
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 nltk.download('punkt')
 
-# Load the Sentence Transformer model
-st_model = SentenceTransformer('all-MiniLM-L6-v2')
+model = SentenceTransformer('all-MiniLM-L6-v2')
 
-def load_stories_from_file(file_path):
-    if not os.path.exists(file_path):
-        print(f"Text file not found: {file_path}, skipping...")
-        return []
-
-    with open(file_path, 'r', encoding='utf-8') as f:
-        stories = f.read().strip().split("\n\n")  
-        stories = [s.strip() for s in stories if len(s.strip()) > 10]  
-
-    if len(stories) == 0:
-        print(f"Warning: {file_path} contains no valid stories!")
-
-    return stories
-
-def load_tokenized_data(bin_file):
-    if not os.path.exists(bin_file):
-        print(f"Binary file not found: {bin_file}, skipping...")
-        return np.array([])
-    return np.fromfile(bin_file, dtype=np.uint16)
-
-def type_token_ratio(tokens):
-    types = set(tokens)
-    return len(types) / len(tokens)
-
-
-def semantic_similarity_cosine(stories):
-    if len(stories) < 2:
-        return 0.0  
-
-    # Compute embeddings
-    embeddings = st_model.encode(stories)
-
-    # Compute cosine similarity for all unique pairs
-    similarity_scores = []
-    num_stories = len(embeddings)
-
-    for i in range(num_stories):
-        for j in range(i + 1, num_stories):
-            sim_score = 1 - distance.cosine(embeddings[i], embeddings[j])
-            similarity_scores.append(sim_score)
-
-    return np.mean(similarity_scores) if similarity_scores else 0.0
-
-def evaluate_file(txt_file, bin_file):
-    """ Evaluate text file and tokenized data file """
-    stories = load_stories_from_file(txt_file)
-    tokens = load_tokenized_data(bin_file)
-
-    if len(stories) == 0 or len(tokens) == 0:
-        return None
-
-    ttr = type_token_ratio(tokens)
-    cosine_sim = semantic_similarity_cosine(stories)
-    token_count = len(tokens)
-
-    print(f"\nDiversity scores for {txt_file}:")
-    print(f"Type-Token Ratio: {ttr:.4f}")
-    print(f"Semantic Similarity: {cosine_sim:.4f}")
-    print(f"Token Count: {token_count}\n")
-
-
-file_pairs = [
+FILE_PAIRS = [
     ('sample_ZuluMax.txt', 'sample_ZuluMax.bin'),
     ('sample_YorubaMax.txt', 'sample_YorubaMax.bin'),
-    ('sample_ZuluPrompted.txt', 'sample_ZuluPrompted.bin'),
-    ('sample_YorubaPrompted.txt', 'sample_YorubaPrompted.bin'),
+    ('sample_ZuluPrompt.txt', 'sample_ZuluPrompt.bin'),
+    ('sample_YorubaPrompt.txt', 'sample_YorubaPrompt.bin'),
     ('sample_ZuluMini.txt', 'sample_ZuluMini.bin'),
     ('sample_YorubaMini.txt', 'sample_YorubaMini.bin')
 ]
 
-for txt_file, bin_file in file_pairs:
-    evaluate_file(txt_file, bin_file)
+def load_tokenized_data(bin_file):
+    if not os.path.exists(bin_file):
+        print(f"Tokenized file not found: {bin_file}, skipping...")
+        return None
+    return np.fromfile(bin_file, dtype=np.uint16)
+
+def type_token_ratio(tokens):
+    if tokens is None or len(tokens) == 0:
+        return 0.0
+    unique_types = set(tokens)
+    return len(unique_types) / len(tokens)
+
+def compute_semantic_similarity(stories):
+    if len(stories) < 2:
+        return 0.0  
+
+    embeddings = model.encode(stories)
+
+    similarity_matrix = cosine_similarity(embeddings)
+    
+    num_stories = len(stories)
+    sim_values = [similarity_matrix[i, j] for i in range(num_stories) for j in range(i+1, num_stories)]
+    
+    return np.mean(sim_values) if sim_values else 0.0
+
+def load_stories(txt_file):
+    if not os.path.exists(txt_file):
+        print(f"Story file not found: {txt_file}, skipping...")
+        return []
+    
+    with open(txt_file, 'r', encoding='utf-8') as f:
+        return [story.strip() for story in f.read().split("---------------") if story.strip()]
+
+def evaluate_diversity(txt_file, bin_file):
+    stories = load_stories(txt_file)
+    print(f"Loaded {len(stories)} stories from {txt_file}")
+    tokens = load_tokenized_data(bin_file)
+
+    ttr = type_token_ratio(tokens)
+    semantic_sim = compute_semantic_similarity(stories)
+
+    return {
+        "type_token_ratio": ttr,
+        "semantic_similarity": semantic_sim,
+        "token_count": len(tokens) if tokens is not None else 0
+    }
+
+for txt_file, bin_file in FILE_PAIRS:
+    scores = evaluate_diversity(txt_file, bin_file)
+    
+    print(f"Diversity scores for {txt_file}:")
+    print(f"  Type-Token Ratio: {scores['type_token_ratio']:.4f}")
+    print(f"  Semantic Similarity: {scores['semantic_similarity']:.4f}")
+    print(f"  Token Count: {scores['token_count']}")
+    print()
